@@ -1,6 +1,6 @@
-from .schedules import DefaultPricingStrategy, OctopusAgileScheduleProvider, PricingStrategy
-from .config import ScheduleConfig, TrackedScheduleConfigCreator
-from .prices import OctopusAgilePricesClient, Price
+from .schedules import DefaultPricingStrategy, OctopusAgileScheduleProvider, OctopusGoScheduleProvider, PricingStrategy
+from .config import OctopusAPIAuthConfig, OctopusAgileScheduleConfig, OctopusGoScheduleConfig, TrackedScheduleConfigCreator
+from .prices import OctopusCurrentTariffAndProductClient, OctopusPricesClient, Price 
 
 import logging
 from typing import Callable, Optional, Type
@@ -44,6 +44,88 @@ logging.getLogger("apscheduler.scheduler").addFilter(
 logging.getLogger("apscheduler.executors.default").addFilter(
     ApScheduleExecutorsFilter()
 )
+
+def run_octopus_go_tariff_schedule(
+        api_key: str,
+        account_number: str,
+        action_when_cheap: Callable[[Optional[Price]], None],
+        action_when_expensive: Callable[[Optional[Price]], None],
+        pricing_strategy: Optional[Type[PricingStrategy]] = DefaultPricingStrategy,
+        is_intelligent: bool = False,
+        prices_to_include: int | Callable[[list[Price]], int] | None = None,
+):
+    """
+    Runs a schedule with half hourly jobs based on the Octopus Go tariff prices.
+    
+    Args:
+        api_key: Octopus Energy API key.
+        account_number: Octopus Energy account number.
+        prices_to_include: The number of prices to include or a callable that determines the number dynamically from available prices.
+        action_when_cheap: Action to execute when the price is in cheap period of go.
+        action_when_expensive: Action to execute when the price is in expensive period of go.
+        pricing_strategy: Custom pricing strategy to handle the prices.
+        is_intelligent: If the tariff is intelligent or regular go.
+    """
+    continuous_scheduler = BackgroundScheduler()
+    cron_scheduler = BackgroundScheduler()
+
+    def set_daily_schedule() -> list[str]:
+        # Go: 00:30 - 05:30, Intelligent: 11:30 - 5:30, people aren't encouraged to choose price amounts here as they're fixed*.
+        # I have heard that intelligent can sometimes give more, but it's rare, not handling this.
+        prices_to_include_for_go = prices_to_include or 48 if is_intelligent else 40
+        config = OctopusGoScheduleConfig(
+            prices_to_include=prices_to_include_for_go,
+            action_when_cheap=action_when_cheap,
+            action_when_expensive=action_when_expensive,
+            is_intelligent=is_intelligent
+        ).add_custom_pricing_strategy(
+            pricing_strategy
+        )
+        
+        tracked_schedule_config = TrackedScheduleConfigCreator(
+            config=config,
+        )
+
+        api_auth_config = OctopusAPIAuthConfig(
+            api_key=api_key,
+            account_number=account_number
+        )
+
+        current_tariff_and_product_client = OctopusCurrentTariffAndProductClient(
+            auth_config=api_auth_config
+        )
+
+        OctopusGoScheduleProvider(
+            prices_client=OctopusPricesClient(
+                auth_config=api_auth_config,
+                tariff_and_product_client=current_tariff_and_product_client
+            ),
+            config=config,
+            scheduler=continuous_scheduler,
+            tracked_schedule_config=tracked_schedule_config,
+        ).run()
+
+        tracked_schedule_config.log_schedule()
+
+    cron_scheduler.add_job(
+        func=set_daily_schedule,
+        trigger="cron",
+        hour=0,
+        minute=0
+    )
+    set_daily_schedule()
+
+    cron_scheduler.start()
+    continuous_scheduler.start()
+
+    try:
+        while True:
+            # This is extremely important,
+            # no sleep would lead to excessive CPU usage
+            time.sleep(0.01)
+    except (KeyboardInterrupt, SystemExit):
+        continuous_scheduler.shutdown()
+        cron_scheduler.shutdown()
 
 def run_octopus_agile_tariff_schedule(
         api_key: str,
@@ -106,9 +188,10 @@ def run_octopus_agile_tariff_schedule(
     ```
     """
     continuous_scheduler = BackgroundScheduler()
+    cron_scheduler = BackgroundScheduler()
 
     def set_daily_schedule() -> list[str]:
-        config = ScheduleConfig(
+        config = OctopusAgileScheduleConfig(
             prices_to_include=prices_to_include,
             action_when_cheap=action_when_cheap,
             action_when_expensive=action_when_expensive,
@@ -120,10 +203,19 @@ def run_octopus_agile_tariff_schedule(
             config=config,
         )
 
+        api_auth_config = OctopusAPIAuthConfig(
+            api_key=api_key,
+            account_number=account_number
+        )
+
+        current_tariff_and_product_client = OctopusCurrentTariffAndProductClient(
+            auth_config=api_auth_config
+        )
+
         OctopusAgileScheduleProvider(
-            prices_client=OctopusAgilePricesClient(
-                api_key=api_key,
-                account_number=account_number
+            prices_client=OctopusPricesClient(
+                auth_config=api_auth_config,
+                tariff_and_product_client=current_tariff_and_product_client
             ),
             config=config,
             scheduler=continuous_scheduler,
@@ -132,7 +224,7 @@ def run_octopus_agile_tariff_schedule(
 
         tracked_schedule_config.log_schedule()
 
-    continuous_scheduler.add_job(
+    cron_scheduler.add_job(
         func=set_daily_schedule,
         trigger="cron",
         hour=0,
@@ -141,6 +233,7 @@ def run_octopus_agile_tariff_schedule(
 
     set_daily_schedule()
 
+    cron_scheduler.start()
     continuous_scheduler.start()
 
     try:
@@ -150,4 +243,5 @@ def run_octopus_agile_tariff_schedule(
             time.sleep(0.01)
     except (KeyboardInterrupt, SystemExit):
         continuous_scheduler.shutdown()
+        cron_scheduler.shutdown()
     

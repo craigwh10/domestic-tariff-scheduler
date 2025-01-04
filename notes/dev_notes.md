@@ -66,3 +66,16 @@ python ./_test_script.py
 ```sh
 pytest __tests__/test_prices.py --log-cli-level=DEBUG
 ```
+
+## Keeping the software "soft" (aim)
+
+- Start with dependency injection first to start building some objects with clear boundaries
+- Then move towards ABC's when you have a shared schema with methods that are consistent across use cases
+  - I've already been stung by this, you end up fitting a round peg in a square hole to try just make sure you meet that method name it wants
+- Rule of 3 with refactors, don't assume a contract after 2 use cases, start to optimise after 3 appear
+
+I've kept the files agnostic to brand but I'll see how this develops in the future as the files are already getting pretty big, I'll likely find out about this once I introduce another brand. (03/01/2025)
+
+When working with functions relating to dates, don't make the mistake I made and call things "get_today" and have the API in there, have a method that takes in the range and let the implementation that is exposed to other classes be specific to what they need.
+
+Keep things opinionated to begin with, if you don't then you'll be trying to make a schema work for something else, for example ScheduleConfig wont be the same for all schedules, it was made with the AgileTariff in mind first, so make it opinionated to that and then figure out if it should be shared again with the rule of 3.

@@ -3,17 +3,42 @@ import logging
 
 from typing import Callable, Optional, Type
 from pydantic import BaseModel, PositiveInt, field_validator
-from datetime import timedelta
 
 from .prices import Price
 from .schedules import PricingStrategy
 
+class BaseConfig(BaseModel):
+    pass
 
-class ScheduleConfig(BaseModel):
-    prices_to_include: PositiveInt | Callable[[list[Price]], int]
+class SimpleActionsConfig(BaseConfig):
+    """
+    At a minimum, this will be the expected config, but I think even this could change if people want more granularity than
+    "expensive" and "cheap"
+    """
     action_when_cheap: Callable[[Price], None]
     action_when_expensive: Callable[[Price], None]
-    _pricing_strategy: Optional["PricingStrategy"] = None
+
+    @field_validator("action_when_cheap", "action_when_expensive", mode="before")
+    def validate_custom_actions(cls, value, info):
+        sig = inspect.signature(value)
+        params = sig.parameters
+
+        if len(params) != 1:
+            raise SystemExit(
+                f"Usage error:\n\n"
+                f"You are missing a required parameter in function '{info.field_name}'"+\
+                f"\n\nFix: '{value.__name__}(price: Price):'"+\
+                f"\n\nCheck other action is like this too otherwise the error will repeat."
+                # TODO: Add a reference to error page
+            )
+        return value
+    
+    model_config = dict(
+        extra="allow"
+    )
+
+class PricesToIncludeConfig(BaseConfig):
+    prices_to_include: PositiveInt | Callable[[list[Price]], int]
 
     @field_validator("prices_to_include", mode="before")
     def validation_prices_to_include_custom_method(cls, value, info):
@@ -42,22 +67,10 @@ class ScheduleConfig(BaseModel):
                     # TODO: Add a reference to error page
                 )
 
-        return value         
-
-    @field_validator("action_when_cheap", "action_when_expensive", mode="before")
-    def validate_custom_actions(cls, value, info):
-        sig = inspect.signature(value)
-        params = sig.parameters
-
-        if len(params) != 1:
-            raise SystemExit(
-                f"Usage error:\n\n"
-                f"You are missing a required parameter in function '{info.field_name}'"+\
-                f"\n\nFix: '{value.__name__}(price: Price):'"+\
-                f"\n\nCheck other action is like this too otherwise the error will repeat."
-                # TODO: Add a reference to error page
-            )
         return value
+    
+class PricingStrategyConfig(BaseConfig):
+    _pricing_strategy: Optional["PricingStrategy"] = None
 
     def add_custom_pricing_strategy(self, pricing_strategy: Type[PricingStrategy]):
         """
@@ -106,10 +119,16 @@ class ScheduleConfig(BaseModel):
 
         return self
     
-    model_config = dict(
-        # this is strict for config but not for field classes
-        extra="forbid"
-    )
+class CompleteConfig(SimpleActionsConfig, PricesToIncludeConfig, PricingStrategyConfig):
+    pass
+
+class OctopusGoScheduleConfig(CompleteConfig):
+    #  Go is 10 prices, Intelligent is 12 prices
+    is_intelligent: bool = False
+
+class OctopusAgileScheduleConfig(CompleteConfig):
+    # Agile is 46 prices
+    pass
 
 class TrackedSchedule:
     price: Price
@@ -121,9 +140,9 @@ class TrackedSchedule:
 
 class TrackedScheduleConfigCreator:
     calls: list[TrackedSchedule]
-    tracked_config: ScheduleConfig
+    tracked_config: SimpleActionsConfig
 
-    def __init__(self, config: ScheduleConfig):
+    def __init__(self, config: SimpleActionsConfig):
         self.tracked_config = config.model_copy()
         self.calls = []
 
@@ -146,3 +165,12 @@ class TrackedScheduleConfigCreator:
         calls_as_logs = [f"{schedule.price.datetime_from.strftime('%H:%M')}, action: {schedule.action}, price: {schedule.price.value}p/kWh" for schedule in sorted_calls]
         log_content = "\n".join(calls_as_logs)
         logging.info(f"\n\nTodays schedule (this includes already passed jobs):\n\n{log_content}\n")
+
+class OctopusAPIAuthConfig(BaseModel):
+    api_key: str
+    account_number: str
+
+    model_config = dict(
+        # this is strict for config but not for field classes
+        extra="forbid"
+    )

@@ -14,6 +14,12 @@ logging.getLogger("energy_tariff_scheduler").setLevel(logging.INFO)
 
 ## [Possibly common] Octopus: The runner is using the incorrect product and prices
 
+Currently the logic for finding your tariff is it fetches your account details from your provided account number, finds your most recent tariff, gets the tariff code for it and then tries its best to match the closest product code from the current active products provided by Octopus (where they are non-business type and within Octopus brand), here it's assumed that the product code contains as many characters as possible in the tariff code, such as if your tariff code is `E-1R-AGILE-FLEX-22-11-25-C` if a product doesn't exist for this it may match `AGILE-24-10-01`.
+
+Obviously this isn't foolproof and a big assumption has been made here so expect it to fail, and if it does please raise it <a href="https://github.com/craigwh10/energy-tariff-scheduler/discussions/new?category=api-issues" target="_blank">on the API issues page</a> and provide relevant logs provided under the `DEBUG` level, an effort has been made to not log out any sensitive data but please be vigilant not to post any in the case of seeing any.
+
+### My tariff isn't supported
+
 If you hit this problem you should see this error (note the mismatch in the tariff and product that has been found):
 
 ```log
@@ -23,10 +29,6 @@ The tariff code you are on isn't supported by this script, please read https://c
 ```
 
 For the example referenced, the debug level is set as `DEBUG`.
-
-Currently the logic for finding your tariff is it fetches your account details from your provided account number, finds your most recent tariff, gets the tariff code for it and then tries its best to match the closest product code from the current active products provided by Octopus (where they are non-business type and within Octopus brand), here it's assumed that the product code contains as many characters as possible in the tariff code, such as if your tariff code is `E-1R-AGILE-FLEX-22-11-25-C` if a product doesn't exist for this it may match `AGILE-24-10-01`.
-
-Obviously this isn't foolproof and a big assumption has been made here so expect it to fail, and if it does please raise it <a href="https://github.com/craigwh10/energy-tariff-scheduler/discussions/new?category=api-issues" target="_blank">on the API issues page</a> and provide relevant logs provided under the `DEBUG` level, an effort has been made to not log out any sensitive data but please be vigilant not to post any in the case of seeing any.
 
 ## [Less common] The runner wont start because of the API not returning data
 

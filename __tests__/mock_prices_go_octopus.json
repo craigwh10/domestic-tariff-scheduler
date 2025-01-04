@@ -1,0 +1,28 @@
+{
+    "count": 3,
+    "next": null,
+    "previous": null,
+    "results": [
+        {
+            "value_exc_vat": 6.667,
+            "value_inc_vat": 7.00035,
+            "valid_from": "2025-01-04T23:30:00Z",
+            "valid_to": "2025-01-05T05:30:00Z",
+            "payment_method": null
+        },
+        {
+            "value_exc_vat": 23.852,
+            "value_inc_vat": 25.0446,
+            "valid_from": "2025-01-04T05:30:00Z",
+            "valid_to": "2025-01-04T23:30:00Z",
+            "payment_method": null
+        },
+        {
+            "value_exc_vat": 6.667,
+            "value_inc_vat": 7.00035,
+            "valid_from": "2025-01-03T23:30:00Z",
+            "valid_to": "2025-01-04T05:30:00Z",
+            "payment_method": null
+        }
+    ]
+}
